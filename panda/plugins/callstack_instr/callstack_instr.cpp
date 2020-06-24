@@ -466,7 +466,7 @@ void get_prog_point(CPUState* cpu, prog_point *p) {
 // returns true if set up OK, and false if it was not
 bool setup_osi() {
     // moved out of init_plugin case statement to mollify SonarQube
-#if defined(TARGET_I386)
+#if defined(TARGET_I386) || defined(TARGET_ARM)
 #if defined(TARGET_X86_64)
     if (panda_os_familyno != OS_LINUX) {
         fprintf(stderr,
