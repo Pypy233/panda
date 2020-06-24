@@ -159,6 +159,7 @@ class Panda(libpanda_mixins, libqemu_mixins, blocking_mixins, osi_mixins, hookin
 
         # Register asid_changed CB if and only if a callback requires procname
         self._registered_asid_changed_internal_cb = False
+        self._registered_mmap_cb = False
 
         self._initialized_panda = False
         self.disabled_tb_chaining = False
@@ -503,7 +504,7 @@ class Panda(libpanda_mixins, libqemu_mixins, blocking_mixins, osi_mixins, hookin
         self.libpanda.panda_require_from_library(charptr, plugin_args, len(argstrs_ffi))
         self._load_plugin_library(name)
 
-    def _procname_changed(self, name):
+    def procname_changed(self, cpu, name):
         for cb_name, cb in self.registered_callbacks.items():
             if not cb["procname"]:
                 continue
@@ -512,7 +513,7 @@ class Panda(libpanda_mixins, libqemu_mixins, blocking_mixins, osi_mixins, hookin
             if name != cb["procname"] and cb['enabled']:
                 self.disable_callback(cb_name)
 
-            self.update_hooks_new_procname(name)
+        self.update_hooks_new_procname(cpu, name)
 
     def unload_plugin(self, name):
         '''

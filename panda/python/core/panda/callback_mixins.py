@@ -74,6 +74,14 @@ class callback_mixins():
         if self._registered_asid_changed_internal_cb: # Already registered these callbacks
             return
 
+        @self.ppp("syscalls2", "on_sys_brk_enter")
+        def on_sys_brk_enter(cpu, pc, brk):
+            name = self.get_process_name(cpu)
+            asid = self.libpanda.panda_current_asid(cpu)
+            if self.asid_mapping.get(asid, None) != name:
+                self.asid_mapping[asid] = name
+                self.procname_changed(cpu, name)
+
         @self.callback.after_block_exec
         def __get_pending_procname_change(cpu, tb, exit_code):
             if exit_code: # Didn't actually execute block
@@ -86,7 +94,7 @@ class callback_mixins():
                     return None # Couldn't figure out the process
                 asid = self.libpanda.panda_current_asid(cpu)
                 self.asid_mapping[asid] = name
-                self._procname_changed(name)
+                self.procname_changed(cpu, name)
                 self.disable_callback('__get_pending_procname_change') # Disabled to begin
 
 
@@ -106,7 +114,7 @@ class callback_mixins():
                 if not self.is_callback_enabled('__get_pending_procname_change'):
                     self.enable_callback('__get_pending_procname_change')
             else: # We do know this ASID->procname, just call procname_changed
-                self._procname_changed(self.asid_mapping[new_asid])
+                self.procname_changed(cpustate, self.asid_mapping[new_asid])
 
             return 0
 

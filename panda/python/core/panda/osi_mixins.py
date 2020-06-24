@@ -112,3 +112,11 @@ class osi_mixins():
             procs[proc.pid] = {"name": ffi.string(proc.name).decode('utf8', 'ignore'), 'pid': proc.pid, 'parent_pid': proc.ppid}
             assert(not (proc.pid != 0 and proc.pid == proc.ppid)) # No cycles allowed other than at 0
         return procs
+
+    def get_process_name(self, cpu):
+        proc = self.plugins['osi'].get_current_process(cpu)
+        if proc == ffi.NULL or proc.name == ffi.NULL:
+            return None
+
+        procname = ffi.string(proc.name).decode('utf8', 'ignore')
+        return ffi.string(proc.name).decode('utf8', 'ignore')

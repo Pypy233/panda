@@ -50,35 +50,53 @@ class hooking_mixins():
         else:
             print(f"{hook_name} not in list of hooks")
 
-    def update_hooks_new_procname(self, name):
+    def update_hooks_new_procname(self, cpu, name):
         '''
         Uses user-defined information to update the state of hooks based on things such as libraryname, procname and whether 
         or not the hook points to kernel space.
         '''
         for h in self.hook_list:
-            if not h.is_kernel and ffi.NULL != current:
-                if h.program_name:
-                    if h.program_name == curent_name and not h.is_enabled:
+            if h.is_kernel:
+                continue
+
+            if h.program_name:
+                if (h.program_name != name):
+                    if h.is_enabled:
+                        self.disable_hook(h)
+                    continue
+
+                if h.library_name is None:
+                    if h.is_enabled:
                         self.enable_hook(h)
-                    elif hook.program_name != current_name and hook.is_enabled:
-                        self.disable_hook(h)
-                libs = self.get_mappings(cpustate,current)
-                if h.library_name:
-                    lowest_matching_lib = None
-                    if libs == ffi.NULL: continue
-                    for i in range(libs.num):
-                        lib = libs.module[i]
+                    continue
+
+            if h.library_name:
+                asid = self.libpanda.panda_current_asid(cpu)
+                lowest_matching_addr = 0
+
+                if lowest_matching_addr == 0:
+                    libs = self.get_mappings(cpu)
+                    if libs == ffi.NULL:
+                        continue
+                    for lib in libs:
                         if lib.file != ffi.NULL:
-                            filename = ffi.string(lib.file).decode()
+                            filename = ffi.string(lib.file).decode("utf8", "ignore")
                             if h.library_name in filename:
-                                if lowest_matching_lib:
-                                    lowest_matching_lib = lib if lib.base < lowest_matching_lib.base else lowest_matching_lib
-                                else:
-                                    lowest_matching_lib = lib
-                    if lowest_matching_lib:
-                        self.update_hook(h, lowest_matching_lib.base + h.target_library_offset)
-                    else:
-                        self.disable_hook(h)
+                                if (lowest_matching_addr == 0) or (lib.base < lowest_matching_addr):
+                                    lowest_matching_addr = lib.base
+
+                if lowest_matching_addr:
+                    self.update_hook(h, lowest_matching_addr + h.target_library_offset)
+                else:
+                    self.disable_hook(h)
+
+    def _register_mmap_cb(self):
+        if self._registered_mmap_cb:
+            return
+
+        @self.ppp("syscalls2", "on_do_mmap2_return")
+        def on_do_mmap2_return(cpu, pc, addr, length, prot, flags, fd, pgoff):
+            self.update_hooks_new_procname(cpu, self.get_process_name(cpu))
 
     def hook(self, addr, enabled=True, kernel=True, libraryname=None, procname=None, name=None):
         '''
@@ -87,6 +105,10 @@ class hooking_mixins():
         '''
         if procname:
             self._register_internal_asid_changed_cb()
+
+        if libraryname:
+            self._register_mmap_cb()
+
         def decorator(fun):
             # Ultimately, our hook resolves as a before_block_exec_invalidate_opt callback so we must match its args
             hook_cb_type = self.callback.before_block_exec_invalidate_opt # (CPUState, TranslationBlock)
@@ -102,7 +124,7 @@ class hooking_mixins():
             hook_cb_passed = hook_cb_type(fun)
             self.plugins['hooks'].add_hook(addr, hook_cb_passed)
             hook_to_add = Hook(is_enabled=enabled,is_kernel=kernel,target_addr=addr,library_name=libraryname,program_name=procname,hook_cb=None, target_library_offset=None)
-            if libraryname: 
+            if libraryname:
                 hook_to_add.target_library_offset = addr
                 hook_to_add.target_addr = 0
                 hook_to_add.hook_cb = hook_cb_passed
