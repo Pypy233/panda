@@ -57,6 +57,7 @@ class PandaArch():
         Return value in a `reg` which is either a register name or index (e.g., "R0" or 0)
         '''
         if isinstance(reg, str):
+            reg = reg.upper()
             if reg not in self.registers.keys():
                 raise ValueError(f"Invalid register name {reg}")
             else:
@@ -70,12 +71,42 @@ class PandaArch():
         '''
         raise NotImplementedError()
 
+    def set_reg(self, cpu, reg, val):
+        '''
+        Set register `reg` to a value where `reg` is either a register name or index (e.g., "R0" or 0)
+        '''
+        if isinstance(reg, str):
+            reg = reg.upper()
+            if reg not in self.registers.keys():
+                raise ValueError(f"Invalid register name {reg}")
+            else:
+                reg = self.registers[reg]
+
+        return self._set_reg_val(cpu, reg, val)
+
+    def _set_reg_val(self, cpu, idx, val):
+        '''
+        Virtual method. Must be implemented for each architecture to return contents of register specified by idx.
+        '''
+        raise NotImplementedError()
+
     def get_pc(self, cpu):
         '''
-        Returns the current program counter. May be overloaded
+        Returns the current program counter. Must be overloaded if self.reg_pc is None
         '''
         if self.reg_pc:
             return self.get_reg(cpu, self.reg_pc)
+        else:
+            raise RuntimeError(f"get_pc unsupported for {self.panda.arch_name}")
+
+    def set_pc(self, cpu, val):
+        '''
+        Set the program counter. Must be overloaded if self.reg_pc is None
+        '''
+        if self.reg_pc:
+            return self.set_reg(cpu, self.reg_pc, val)
+        else:
+            raise RuntimeError(f"set_pc unsupported for {self.panda.arch_name}")
 
     def dump_regs(self, cpu):
         '''
@@ -136,6 +167,12 @@ class ArmArch(PandaArch):
         '''
         return cpu.env_ptr.regs[reg]
 
+    def _set_reg_val(self, cpu, reg, val):
+        '''
+        Set an arm register
+        '''
+        cpu.env_ptr.regs[reg] = val
+
 class MipsArch(PandaArch):
     '''
     Register names and accessors for MIPS
@@ -169,17 +206,29 @@ class MipsArch(PandaArch):
         self.reg_retaddr = regnames.index('ra')
         self.registers = {regnames[idx]: idx for idx in range(len(regnames)) }
 
-    def get_ip(self, cpu):
+    def get_pc(self, cpu):
         '''
         Overloaded function to return the MIPS current program counter
         '''
         return cpu.env_ptr.active_tc.PC
 
+    def set_pc(self, cpu, val):
+        '''
+        Overloaded function set the MIPS program counter
+        '''
+        cpu.env_ptr.active_tc.PC = val
+
     def _get_reg_val(self, cpu, reg):
         '''
         Return a mips register
         '''
-        return cpu.env_ptr.active_tc.gpr
+        return cpu.env_ptr.active_tc.gpr[reg]
+
+    def _set_reg_val(self, cpu, reg, val):
+        '''
+        Set a mips register
+        '''
+        cpu.env_ptr.active_tc.gpr[reg] = val
 
 class X86Arch(PandaArch):
     '''
@@ -194,17 +243,29 @@ class X86Arch(PandaArch):
         self.reg_sp = regnames.index('ESP')
         self.registers = {regnames[idx]: idx for idx in range(len(regnames)) }
 
-    def get_ip(self, cpu):
+    def get_pc(self, cpu):
         '''
         Overloaded function to return the x86 current program counter
         '''
-        return cpu.env_ptr.pc
+        return cpu.env_ptr.eip
+
+    def set_pc(self, cpu, val):
+        '''
+        Overloaded function to set the x86 program counter
+        '''
+        cpu.env_ptr.eip = val
 
     def _get_reg_val(self, cpu, reg):
         '''
         Return an x86 register
         '''
         return cpu.env_ptr.regs[reg]
+
+    def _set_reg_val(self, cpu, reg, val):
+        '''
+        Set an x86 register
+        '''
+        cpu.env_ptr.regs[reg] = val
 
 class X86_64Arch(PandaArch):
     '''
@@ -221,14 +282,26 @@ class X86_64Arch(PandaArch):
         self.reg_sp = regnames.index('RSP')
         self.registers = {regnames[idx]: idx for idx in range(len(regnames)) }
 
-    def get_ip(self, cpu):
+    def get_pc(self, cpu):
         '''
-        Overloaded function to return the x86 current program counter
+        Overloaded function to return the x86_64 current program counter
         '''
-        return cpu.env_ptr.pc
+        return cpu.env_ptr.eip
+
+    def set_pc(self, cpu, val):
+        '''
+        Overloaded function to set the x86_64 program counter
+        '''
+        cpu.env_ptr.eip = val
 
     def _get_reg_val(self, cpu, reg):
         '''
         Return an x86_64 register
         '''
         return cpu.env_ptr.regs[reg]
+
+    def _set_reg_val(self, cpu, reg, val):
+        '''
+        Set an x86_64 register
+        '''
+        cpu.env_ptr.regs[reg] = val
