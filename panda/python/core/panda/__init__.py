@@ -12,6 +12,7 @@ Check out our example plugins here: https://github.com/panda-re/panda/tree/maste
 
 from .main import Panda, blocking
 from .ffi_importer import ffi
+from .arch import *
 from .extras import *
 
 __pdoc__ = {}
