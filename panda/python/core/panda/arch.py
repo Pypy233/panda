@@ -3,7 +3,7 @@ from panda.utils import telescope
 
 class PandaArch():
     '''
-    Base class with default methods for a PANDA-supported architecture
+    Base class for architecture-specific implementations for PANDA-supported architectures
     '''
     def __init__(self, panda):
         '''
@@ -14,16 +14,47 @@ class PandaArch():
         self.reg_sp = None # Stack pointer register ID if stored in a register
         self.reg_pc = None # PC register ID if stored in a register
         self.reg_retaddr = None # Return address register ID if stored in a register
-        self.wordsize = int(panda.bits/4)
-
         self.registers = {}
         '''
         Mapping of register names to indices into the appropriate CPUState array
         '''
 
+    def _determine_bits(self):
+        '''
+        Determine bits and endianness for the panda object's architecture
+        '''
+        bits = None
+        endianness = None # String 'little' or 'big'
+        if self.panda.arch_name == "i386":
+            bits = 32
+            endianness = "little"
+        elif self.panda.arch_name == "x86_64":
+            bits = 64
+            endianness = "little"
+        elif self.panda.arch_name == "arm":
+            endianness = "little" # XXX add support for arm BE?
+            bits = 32
+        elif self.panda.arch_name == "aarch64":
+            bit = 64
+            endianness = "little" # XXX add support for arm BE?
+        elif self.panda.arch_name == "ppc":
+            bits = 32
+            endianness = "big"
+        elif self.panda.arch_name == "mips":
+            bits = 32
+            endianness = "big"
+        elif self.panda.arch_name == "mipsel":
+            bits = 32
+            endianness = "little"
+
+        assert (bits is not None), "Missing num_bits logic for {self.panda.arch_name}"
+        assert (endianness is not None), "Missing endianness logic for {self.panda.arch_name}"
+        register_size = int(bits/8)
+        return bits, endianness, register_size
+
     def get_reg(self, cpu, reg):
         '''
-        Return value in a register by name or index (e.g., "R0" or 0)
+        Return value in a `reg` which is either a register name or index (e.g., "R0" or 0)
         '''
         if isinstance(reg, str):
             if reg not in self.registers.keys():
@@ -33,15 +64,15 @@ class PandaArch():
 
         return self._get_reg_val(cpu, reg)
 
-    def _get_reg_val(self, cpu, reg):
+    def _get_reg_val(self, cpu, idx):
         '''
-        Virtual method. Must be implemented for each architecture to return contents of register specified by reg
+        Virtual method. Must be implemented for each architecture to return contents of register specified by idx.
         '''
         raise NotImplementedError()
 
     def get_pc(self, cpu):
         '''
-        Default method to get the current program counter
+        Returns the current program counter. May be overloaded
         '''
         if self.reg_pc:
             return self.get_reg(cpu, self.reg_pc)
@@ -52,20 +83,22 @@ class PandaArch():
         '''
         for (regname, reg) in self.registers.items():
             val = self.get_reg(cpu, reg)
-            val = cpu.env_ptr.active_tc.gpr[reg]
             print("{}: 0x{:x}".format(regname, val), end="\t")
             telescope(self.panda, cpu, val)
 
     def dump_stack(self, cpu, words=8):
         '''
-        Print (telescoping) most recent 8 words on the stack (from reg_sp to reg_sp+[words]*word_size)
+        Print (telescoping) most recent `words` words on the stack (from stack pointer to stack pointer + `words`*word_size)
         '''
+
         base_reg_s = "SP"
         base_reg_val = self.get_reg(cpu, self.reg_sp)
+        word_size = int(self.panda.bits/4)
+
         for word_idx in range(words):
-            val_b = self.panda.virtual_memory_read(cpu, base_reg_val+word_idx*self.word_size, self.word_size)
+            val_b = self.panda.virtual_memory_read(cpu, base_reg_val+word_idx*word_size, word_size)
             val = int.from_bytes(val_b, byteorder='little')
-            print("[{}+0x{:0>2x} == 0x{:0<8x}]: 0x{:0<8x}".format(base_reg_s, word_idx*self.word_size, base_reg_val+word_idx*self.word_size, val), end="\t")
+            print("[{}+0x{:0>2x} == 0x{:0<8x}]: 0x{:0<8x}".format(base_reg_s, word_idx*word_size, base_reg_val+word_idx*word_size, val), end="\t")
             telescope(self.panda, cpu, val)
 
     def dump_state(self, cpu):
@@ -73,11 +106,12 @@ class PandaArch():
         Print registers and stack
         """
         print("Registers:")
-        dump_regs(panda, cpu)
+        print(len(self.registers))
+        self.dump_regs(cpu)
         print("Stack:")
-        dump_stack(panda, cpu)
+        self.dump_stack(cpu)
 
-class Arm(PandaArch):
+class ArmArch(PandaArch):
     '''
     Register names and accessors for ARM
     '''
@@ -89,7 +123,7 @@ class Arm(PandaArch):
 
         regnames = ["R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7",
                     "R8", "R9", "R10", "R11", "R12", "SP", "LR", "IP"]
-        registers = {regnames[idx]: idx for idx in range(len(regnames)) }
+        self.registers = {regnames[idx]: idx for idx in range(len(regnames)) }
         """Register array for ARM"""
 
         self.reg_sp = regnames.index("SP")
@@ -102,7 +136,7 @@ class Arm(PandaArch):
         '''
         return cpu.env_ptr.regs[reg]
 
-class Mips:
+class MipsArch(PandaArch):
     '''
     Register names and accessors for MIPS
     '''
@@ -125,7 +159,7 @@ class Mips:
     '''
 
     def __init__(self, panda):
-        PandaArch.__init__(self, panda)
+        super().__init__(panda)
         regnames = ['zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3',
                     't0', 't1', 't2', 't3', 't4', 't5', 't6', 't7',
                     's0', 's1', 's2', 's3', 's4', 's5', 's6', 's7',
@@ -133,7 +167,7 @@ class Mips:
 
         self.reg_sp = regnames.index('sp')
         self.reg_retaddr = regnames.index('ra')
-        registers = {regnames[idx]: idx for idx in range(len(regnames)) }
+        self.registers = {regnames[idx]: idx for idx in range(len(regnames)) }
 
     def get_ip(self, cpu):
         '''
@@ -147,18 +181,18 @@ class Mips:
         '''
         return cpu.env_ptr.active_tc.gpr
 
-class X86:
+class X86Arch(PandaArch):
     '''
     Register names and accessors for x86
     '''
 
     def __init__(self, panda):
-        PandaArch.__init__(self, panda)
+        super().__init__(panda)
         regnames = ['EAX', 'ECX', 'EDX', 'EBX', 'ESP', 'EBP', 'ESI', 'EDI']
         # XXX Note order is A C D B, because that's how qemu does it . See target/i386/cpu.h
 
         self.reg_sp = regnames.index('ESP')
-        registers = {regnames[idx]: idx for idx in range(len(regnames)) }
+        self.registers = {regnames[idx]: idx for idx in range(len(regnames)) }
 
     def get_ip(self, cpu):
         '''
@@ -172,20 +206,20 @@ class X86:
         '''
         return cpu.env_ptr.regs[reg]
 
-class X86_64:
+class X86_64Arch(PandaArch):
     '''
     Register names and accessors for x86_64
     '''
 
     def __init__(self, panda):
-        PandaArch.__init__(self, panda)
+        super().__init__(panda)
         # The only place I could find the R_ names is in tcg/i386/tcg-target.h:50
         regnames = ['RAX', 'RCX', 'RDX', 'RBX', 'RSP', 'RBP', 'RSI', 'RDI',
                     'R8', 'R9', 'R10', 'R11', 'R12', 'R13', 'R14', 'R15']
         # XXX Note order is A C D B, because that's how qemu does it
 
         self.reg_sp = regnames.index('RSP')
-        registers = {regnames[idx]: idx for idx in range(len(regnames)) }
+        self.registers = {regnames[idx]: idx for idx in range(len(regnames)) }
 
     def get_ip(self, cpu):
         '''
