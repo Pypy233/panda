@@ -874,6 +874,33 @@ class Panda():
         '''
         return self.libpanda.g_malloc0(size)
 
+    def current_sp(self, cpustate):
+        '''
+        Get current stack pointer
+
+            Parameters:
+                cpustate: CPUState struct
+
+            Return:
+                integer value of stack pointer
+        '''
+        return self.libpanda.panda_current_sp_external(cpustate)
+
+    def current_pc(self, cpustate):
+        '''
+        Get current program counter
+
+            Parameters:
+                cpustate: CPUState struct
+
+            Return:
+                integer value of current program counter
+
+            .. Deprecated:: Use panda.arch.get_pc(cpu) instead
+        '''
+        return self.libpanda.panda_current_pc(cpustate)
+
+
     def current_asid(self, cpustate):
         '''
         Get current Application Specific ID
